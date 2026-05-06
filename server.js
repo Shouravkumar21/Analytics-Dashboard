@@ -101,19 +101,20 @@ async function processData(data) {
   };
 
   const values = data.map(item => {
-    // Perfect Match for your CSV fields
-    const name = item['product_name'] || 'Unknown Product';
-    
-    const rawCat = item['category'] || 'Uncategorized';
+    // Clean all keys in the item (lowercase and trim) to be 100% sure we find them
+    const cleanItem = {};
+    Object.keys(item).forEach(key => {
+      cleanItem[key.toLowerCase().trim()] = item[key];
+    });
+
+    const name = cleanItem['product_name'] || cleanItem['product name'] || 'Unknown Product';
+    const rawCat = cleanItem['category'] || 'Uncategorized';
     const cleanCat = String(rawCat).split('|')[0] || 'Uncategorized';
     
-    // Handle potential errors in rating (like a '|' or empty string)
-    let rawRating = item['rating'];
-    const rat = cleanFloat(rawRating);
-    
-    const rev = cleanFloat(item['rating_count']);
-    const disc = cleanFloat(item['discount_percentage']);
-    const prc = cleanFloat(item['discounted_price']);
+    const rat = cleanFloat(cleanItem['rating']);
+    const rev = cleanFloat(cleanItem['rating_count']);
+    const disc = cleanFloat(cleanItem['discount_percentage']);
+    const prc = cleanFloat(cleanItem['discounted_price']);
 
     return [name, cleanCat, rat, rev, disc, prc];
   });
