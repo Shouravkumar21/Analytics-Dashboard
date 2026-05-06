@@ -53,20 +53,26 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
       await workbook.xlsx.readFile(filePath);
       const worksheet = workbook.getWorksheet(1);
       
-      let headers = [];
+      let headers = {};
       worksheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) {
           row.eachCell((cell, colNumber) => {
-            headers[colNumber] = cell.value ? cell.value.toString().trim() : '';
+            const header = cell.value ? cell.value.toString().trim().toLowerCase() : '';
+            if (header) headers[colNumber] = header;
           });
         } else {
           let rowData = {};
-          row.eachCell((cell, colNumber) => {
-            if (headers[colNumber]) {
-              rowData[headers[colNumber]] = cell.value;
+          // Check if this row actually has data
+          let hasData = false;
+          row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            const header = headers[colNumber];
+            if (header) {
+              const val = cell.value && typeof cell.value === 'object' ? cell.value.result || cell.value.text : cell.value;
+              rowData[header] = val;
+              if (val !== null && val !== undefined) hasData = true;
             }
           });
-          results.push(rowData);
+          if (hasData) results.push(rowData);
         }
       });
       await processData(results);
