@@ -93,20 +93,21 @@ async function processData(data) {
   };
 
   const values = data.map(item => {
-    // Explicit mapping for Amazon dataset shown in screenshot
-    const rawName = item['product_name'] || item['Product Name'] || item['product'] || 'Unknown Product';
-    const rawCat = item['category'] || item['Category'] || 'Uncategorized';
+    // Smart Mapping: Look for multiple common column names
+    const name = item['product_name'] || item['Product Name'] || item['name'] || item['title'] || item['Product'] || item['Product_Name'] || 'Unknown Product';
     
-    // The screenshot shows category is a long string separated by '|'. 
-    // Let's take just the first part so it looks better on charts.
+    const rawCat = item['category'] || item['Category'] || item['type'] || 'Uncategorized';
     const cleanCat = String(rawCat).split('|')[0] || 'Uncategorized';
     
-    const rat = cleanFloat(item['rating']) || cleanFloat(item['Rating']) || 0;
-    const rev = cleanFloat(item['rating_count']) || cleanFloat(item['Reviews']) || 0;
-    const disc = cleanFloat(item['discount_percentage']) || cleanFloat(item['Discount']) || 0;
-    const prc = cleanFloat(item['discounted_price']) || cleanFloat(item['Price']) || 0;
+    const rat = cleanFloat(item['rating']) || cleanFloat(item['Rating']) || cleanFloat(item['score']) || cleanFloat(item['stars']) || cleanFloat(item['Stars']) || 0;
+    
+    const rev = cleanFloat(item['rating_count']) || cleanFloat(item['Reviews']) || cleanFloat(item['reviews']) || cleanFloat(item['Review Count']) || 0;
+    
+    const disc = cleanFloat(item['discount_percentage']) || cleanFloat(item['Discount']) || cleanFloat(item['discount']) || cleanFloat(item['Off']) || 0;
+    
+    const prc = cleanFloat(item['discounted_price']) || cleanFloat(item['Price']) || cleanFloat(item['price']) || cleanFloat(item['Amount']) || 0;
 
-    return [rawName, cleanCat, rat, rev, disc, prc];
+    return [name, cleanCat, rat, rev, disc, prc];
   });
 
   const query = format(
