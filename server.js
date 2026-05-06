@@ -87,9 +87,11 @@ async function processData(data) {
   if (!data || data.length === 0) return;
 
   const cleanFloat = (val) => {
-    if (!val) return 0;
-    const str = String(val).replace(/[^0-9.]/g, '');
-    return parseFloat(str) || 0;
+    if (val === undefined || val === null || val === '') return 0;
+    // Remove everything except numbers and decimal point
+    const str = String(val).trim().replace(/[^0-9.]/g, '');
+    const num = parseFloat(str);
+    return isNaN(num) ? 0 : num;
   };
 
   const values = data.map(item => {
