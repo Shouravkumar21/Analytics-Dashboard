@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS products (
+  id SERIAL PRIMARY KEY,
+  product_name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  rating FLOAT DEFAULT 0,
+  review_count INT DEFAULT 0,
+  discount FLOAT DEFAULT 0,
+  price FLOAT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
