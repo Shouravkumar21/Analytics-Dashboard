@@ -54,29 +54,50 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
       const worksheet = workbook.getWorksheet(1);
       
       let headers = {};
+      let headerRowFound = false;
+
       worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) {
-          row.eachCell((cell, colNumber) => {
-            const header = cell.value ? cell.value.toString().trim().toLowerCase() : '';
-            if (header) headers[colNumber] = header;
-          });
-        } else {
+        // Try to find the header row (first row with keywords or just the first row if none found)
+        if (!headerRowFound) {
+          const rowValues = [];
+          row.eachCell((cell) => rowValues.push(String(cell.value || '').toLowerCase()));
+          
+          const hasKeywords = rowValues.some(v => 
+            v.includes('name') || v.includes('product') || v.includes('price') || v.includes('category') || v.includes('rating')
+          );
+
+          if (hasKeywords || rowNumber > 10) { // Default to first row or after 10 rows
+            row.eachCell((cell, colNumber) => {
+              if (cell.value) {
+                const cleanHeader = String(cell.value).replace(/[^\x20-\x7E]/g, '').toLowerCase().trim();
+                headers[colNumber] = cleanHeader;
+              }
+            });
+            headerRowFound = true;
+            return;
+          }
+        }
+
+        if (headerRowFound) {
           let rowData = {};
-          // Check if this row actually has data
           let hasData = false;
           row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
             const header = headers[colNumber];
             if (header) {
-              const val = cell.value && typeof cell.value === 'object' ? cell.value.result || cell.value.text : cell.value;
+              const val = cell.value && typeof cell.value === 'object' ? cell.value.result || cell.value.text || cell.value.richText : cell.value;
               rowData[header] = val;
-              if (val !== null && val !== undefined) hasData = true;
+              if (val !== null && val !== undefined && val !== '') hasData = true;
             }
           });
-          if (hasData) results.push(rowData);
+          if (hasData && Object.keys(rowData).length > 0) {
+            // Avoid adding the header row itself to results
+            const isHeaderRow = Object.values(rowData).some(v => String(v).toLowerCase() === 'product name' || String(v).toLowerCase() === 'price');
+            if (!isHeaderRow) results.push(rowData);
+          }
         }
       });
       await processData(results);
-      fs.unlinkSync(filePath);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       res.json({ message: 'Excel data imported successfully' });
     } else {
       res.status(400).json({ error: 'Invalid file format' });
@@ -90,31 +111,43 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
 const format = require('pg-format');
 
 async function processData(data) {
-  if (!data || data.length === 0) return;
+  if (!data || data.length === 0) {
+    console.log('No data to process');
+    return;
+  }
 
   const cleanFloat = (val) => {
     if (val === undefined || val === null || val === '') return 0;
-    // Remove everything except numbers and decimal point
     const str = String(val).trim().replace(/[^0-9.]/g, '');
     const num = parseFloat(str);
     return isNaN(num) ? 0 : num;
   };
 
-  const values = data.map(item => {
-    // Clean all keys in the item (lowercase and trim) to be 100% sure we find them
+  const values = data.map((item, index) => {
     const cleanItem = {};
     Object.keys(item).forEach(key => {
-      cleanItem[key.toLowerCase().trim()] = item[key];
+      const cleanKey = key.replace(/[^\x20-\x7E]/g, '').toLowerCase().trim();
+      if (cleanKey) cleanItem[cleanKey] = item[key];
     });
 
-    const name = cleanItem['product_name'] || cleanItem['product name'] || 'Unknown Product';
-    const rawCat = cleanItem['category'] || 'Uncategorized';
-    const cleanCat = String(rawCat).split('|')[0] || 'Uncategorized';
+    if (index === 0) {
+      console.log('Debug - First item keys:', Object.keys(cleanItem));
+    }
+
+    // Advanced Keyword Mapping
+    const findValue = (keywords) => {
+      const key = Object.keys(cleanItem).find(k => keywords.some(kw => k.includes(kw)));
+      return key ? cleanItem[key] : null;
+    };
+
+    const name = findValue(['product_name', 'product name', 'name', 'title', 'product', 'item']) || 'Unknown Product';
+    const rawCat = findValue(['category', 'cat', 'genre', 'type', 'main_category']) || 'Uncategorized';
+    const cleanCat = String(rawCat).split('|')[0].trim() || 'Uncategorized';
     
-    const rat = cleanFloat(cleanItem['rating']);
-    const rev = cleanFloat(cleanItem['rating_count']);
-    const disc = cleanFloat(cleanItem['discount_percentage']);
-    const prc = cleanFloat(cleanItem['discounted_price']);
+    const rat = cleanFloat(findValue(['rating', 'rate', 'stars', 'score', 'actual_rating']));
+    const rev = cleanFloat(findValue(['reviews', 'count', 'rating_count', 'no_of_ratings', 'number', 'review_count']));
+    const disc = cleanFloat(findValue(['discount', 'off', 'percent', 'pct', 'discount_percent', 'discount_percentage']));
+    const prc = cleanFloat(findValue(['price', 'cost', 'amount', 'value', 'mrp', 'selling_price', 'actual_price']));
 
     return [name, cleanCat, rat, rev, disc, prc];
   });
@@ -173,6 +206,17 @@ app.get('/api/products', async (req, res) => {
       page: parseInt(page),
       limit: parseInt(limit),
     });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Clear database
+app.delete('/api/products/clear', async (req, res) => {
+  try {
+    await db.query('DELETE FROM products');
+    res.json({ message: 'Database cleared successfully' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Database error' });
